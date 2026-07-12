@@ -11,18 +11,6 @@ import { createSessionWorker } from "../queue/QueueWorker";
 import { Worker } from "bullmq";
 import { logger } from "../utils/logger";
 
-/**
- * Ponto único de criação/listagem/controle das sessões — agora DINÂMICO.
- *
- * Antes: a lista de sessões vinha fixa de uma variável de ambiente, exigindo
- * redeploy para adicionar um número novo.
- *
- * Agora: o Supabase (`sessions`) é a fonte de verdade. Na inicialização, o
- * SessionManager lê a tabela; se estiver vazia, semeia com SESSIONS do .env
- * (só para facilitar o primeiro boot). Depois disso, números são
- * adicionados/removidos em tempo real pela Plataforma (dashboard), via
- * addSession()/removeSession(), sem reiniciar o container.
- */
 export class SessionManager {
   private supervisors = new Map<string, SessionSupervisor>();
   private workers = new Map<string, Worker>();
@@ -145,12 +133,11 @@ export class SessionManager {
     return this.driver.requestPairingCode(sessionId, phoneNumber);
   }
 
-  /**
-   * Avisa o número admin (ADMIN_NOTIFICATION_PHONE) via WhatsApp quando uma
-   * sessão cai. Usa qualquer OUTRA sessão que ainda esteja conectada pra
-   * enviar o aviso — a própria sessão que caiu obviamente não consegue
-   * enviar nada. Se nenhuma sessão estiver disponível, só loga.
-   */
+  getDebugScreenshotPath(sessionId: string): string {
+    this.requireSession(sessionId);
+    return this.driver.getDebugScreenshotPath(sessionId);
+  }
+
   private async notifySessionDown(sessionId: string, sessionName: string, newState: SessionState): Promise<void> {
     if (!env.ADMIN_NOTIFICATION_PHONE) return;
 
