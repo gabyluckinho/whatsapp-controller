@@ -138,6 +138,11 @@ export class SessionManager {
     return this.driver.getDebugScreenshotPath(sessionId);
   }
 
+  getDebugHtmlPath(sessionId: string): string {
+    this.requireSession(sessionId);
+    return this.driver.getDebugHtmlPath(sessionId);
+  }
+
   private async notifySessionDown(sessionId: string, sessionName: string, newState: SessionState): Promise<void> {
     if (!env.ADMIN_NOTIFICATION_PHONE) return;
 
