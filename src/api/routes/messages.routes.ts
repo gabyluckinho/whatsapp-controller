@@ -3,7 +3,16 @@ import { z } from "zod";
 import { SessionManager } from "../../sessions/SessionManager";
 
 const textSchema = z.object({ contact: z.string().min(3), text: z.string().min(1) });
-const mediaSchema = z.object({ contact: z.string().min(3), filePath: z.string().min(1), caption: z.string().optional() });
+const mediaSchema = z
+  .object({
+    contact: z.string().min(3),
+    filePath: z.string().min(1).optional(),
+    mediaUrl: z.string().url().optional(),
+    caption: z.string().optional(),
+  })
+  .refine((data) => data.filePath || data.mediaUrl, {
+    message: "Informe filePath (arquivo local) ou mediaUrl (link público, ex: S3)",
+  });
 
 export function messagesRouter(sessionManager: SessionManager): Router {
   const router = Router();
@@ -47,4 +56,3 @@ export function messagesRouter(sessionManager: SessionManager): Router {
 
   return router;
 }
-
