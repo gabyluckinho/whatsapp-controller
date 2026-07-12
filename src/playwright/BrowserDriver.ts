@@ -7,7 +7,10 @@ export interface SendTextParams {
 export interface SendMediaParams {
   sessionId: string;
   contact: string;
-  filePath: string;
+  /** Caminho de um arquivo já salvo no disco do Controller. */
+  filePath?: string;
+  /** URL pública do arquivo (ex: link do S3) — o Controller baixa antes de enviar. */
+  mediaUrl?: string;
   caption?: string;
 }
 
@@ -28,6 +31,8 @@ export interface IBrowserDriver {
   getQrCode(sessionId: string): Promise<string | null>;
   isConnected(sessionId: string): Promise<boolean>;
 
+  requestPairingCode(sessionId: string, phoneNumber: string): Promise<string>;
+
   sendText(params: SendTextParams): Promise<void>;
   sendImage(params: SendMediaParams): Promise<void>;
   sendAudio(params: SendMediaParams): Promise<void>;
@@ -37,4 +42,3 @@ export interface IBrowserDriver {
   onIncomingMessage(sessionId: string, handler: (msg: IncomingMessage) => void): void;
   onDisconnected(sessionId: string, handler: () => void): void;
 }
-
