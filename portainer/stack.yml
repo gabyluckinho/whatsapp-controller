@@ -1,0 +1,70 @@
+# Stack pronta para deploy via Portainer > Stacks > Add Stack > Repository/Upload.
+# As variáveis de ambiente (API_KEY, SUPABASE_URL, etc.) devem ser configuradas
+# na seção "Environment variables" do próprio Portainer ao criar a stack,
+# ou via um arquivo .env referenciado no repositório.
+#
+# O Controller expõe TANTO a API interna (para o n8n) QUANTO a Plataforma
+# (dashboard, em /platform) na mesma porta 3000 — um único container.
+version: "3.9"
+
+services:
+  controller:
+    image: SEU_REGISTRY/wa-controller:latest
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - API_KEY=${API_KEY}
+      - PLATFORM_ADMIN_PASSWORD=${PLATFORM_ADMIN_PASSWORD}
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET}
+      - SESSIONS=${SESSIONS}
+      - HUMAN_DELAY_MIN_MS=1800
+      - HUMAN_DELAY_MAX_MS=6500
+      - MAX_MESSAGES_PER_MINUTE=8
+      - WARMUP_PERIOD_HOURS=48
+      - WARMUP_MAX_MESSAGES_PER_MINUTE=2
+    volumes:
+      - sessions_data:/data/sessions
+      # Um único volume pai: sessões adicionadas dinamicamente pela Plataforma
+      # (além das iniciais) já persistem automaticamente, sem precisar editar
+      # esta stack ou redeployar a cada número novo.
+    networks:
+      - wa-net
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 3G
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.wa-controller.rule=Host(`api-whatsapp.SEU_DOMINIO.com`)"
+        - "traefik.http.routers.wa-controller.entrypoints=websecure"
+        - "traefik.http.routers.wa-controller.tls.certresolver=letsencrypt"
+        - "traefik.http.services.wa-controller.loadbalancer.server.port=3000"
+        - "traefik.http.routers.wa-platform.rule=Host(`painel-whatsapp.SEU_DOMINIO.com`)"
+        - "traefik.http.routers.wa-platform.entrypoints=websecure"
+        - "traefik.http.routers.wa-platform.tls.certresolver=letsencrypt"
+        - "traefik.http.services.wa-platform.loadbalancer.server.port=3000"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - wa-net
+
+networks:
+  wa-net:
+    external: true # aponta para a rede compartilhada do Traefik/n8n já existente na VPS
+
+volumes:
+  sessions_data:
+  redis_data:
+

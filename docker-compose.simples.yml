@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# VERSÃO SIMPLIFICADA PARA O PRIMEIRO DEPLOY
+# ---------------------------------------------------------------------------
+# Sem Traefik/domínio — publica a porta 3000 direto na VPS. Acesse depois por:
+#   Plataforma (painel): http://SEU_IP:3000/platform
+#   API interna (n8n):   http://SEU_IP:3000
+#
+# Quando quiser HTTPS + domínio bonito, use o docker-compose.yml normal
+# (com labels do Traefik) no lugar deste.
+# ---------------------------------------------------------------------------
+version: "3.9"
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: docker/controller/Dockerfile
+    container_name: wa-controller
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - sessions_data:/data/sessions
+    depends_on:
+      - redis
+    networks:
+      - wa-net
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+        reservations:
+          memory: 1g
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - wa-net
+
+networks:
+  wa-net:
+    external: false
+
+volumes:
+  sessions_data:
+  redis_data:
+

@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: docker/controller/Dockerfile
+    container_name: wa-controller
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - sessions_data:/data/sessions
+    depends_on:
+      - redis
+    networks:
+      - wa-net
+    labels:
+      - "traefik.enable=true"
+      # API interna (consumida pelo n8n)
+      - "traefik.http.routers.wa-controller.rule=Host(`api-whatsapp.SEU_DOMINIO.com`)"
+      - "traefik.http.routers.wa-controller.entrypoints=websecure"
+      - "traefik.http.routers.wa-controller.tls.certresolver=letsencrypt"
+      - "traefik.http.services.wa-controller.loadbalancer.server.port=3000"
+      # Plataforma (dashboard) — mesmo container, mesmo processo, rota /platform.
+      # Se preferir um subdomínio dedicado para o painel, duplique o router
+      # abaixo apontando para o mesmo serviço, só trocando o Host() e
+      # adicionando um PathPrefix ou redirecionamento para /platform.
+      - "traefik.http.routers.wa-platform.rule=Host(`painel-whatsapp.SEU_DOMINIO.com`)"
+      - "traefik.http.routers.wa-platform.entrypoints=websecure"
+      - "traefik.http.routers.wa-platform.tls.certresolver=letsencrypt"
+      - "traefik.http.services.wa-platform.loadbalancer.server.port=3000"
+    # Limites de recurso: cada Chromium consome de forma variável, mas
+    # 3 sessões concorrentes cabem confortavelmente numa VPS de 4-8GB.
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+        reservations:
+          memory: 1g
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - wa-net
+
+networks:
+  wa-net:
+    external: false
+
+volumes:
+  sessions_data:
+  redis_data:
+
