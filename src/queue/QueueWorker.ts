@@ -26,7 +26,7 @@ export function createSessionWorker(
   };
 
   const worker = new Worker<SendMessageJobData>(
-       `session-${sessionId}`,
+    `session-${sessionId}`,
     async (job: Job<SendMessageJobData>) => {
       const { contact, type, payload } = job.data;
 
@@ -82,6 +82,13 @@ export function createSessionWorker(
         await messageRepository.recordSent(sessionId, contact, type, "error");
         await logRepository.record(sessionId, "error", "send_failed", String(error));
         await webhookDispatcher.emit("message.sent", { sessionId, jobId: job.id, contact, type, status: "error" });
+
+        const isPermanentFailure = String(error).includes("bloqueou este número");
+        if (isPermanentFailure) {
+          log.warn({ jobId: job.id, contact }, "Falha permanente — não reagendando novas tentativas");
+          return;
+        }
+
         throw error;
       }
     },
