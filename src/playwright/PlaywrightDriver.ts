@@ -227,10 +227,6 @@ export class PlaywrightDriver implements IBrowserDriver {
       await simulatePresence(page);
       await humanDelay();
 
-      // force: true — o elemento já foi confirmado (locator resolveu certo),
-      // mas o clique "educado" do Playwright estava sendo bloqueado por algo
-      // sobrepondo visualmente o botão (comum durante animações da UI do
-      // WhatsApp). force ignora essa checagem e clica direto nas coordenadas.
       await page.locator(WhatsAppSelectors.attachButton).first().click({ force: true });
       await microDelay(200, 500);
 
@@ -260,6 +256,17 @@ export class PlaywrightDriver implements IBrowserDriver {
     return path.join(VOLUMES_BASE_PATH, `session-${sessionId}`, "last-error.png");
   }
 
+  getDebugHtmlPath(sessionId: string): string {
+    return path.join(VOLUMES_BASE_PATH, `session-${sessionId}`, "last-error.html");
+  }
+
+  /**
+   * Tira um print da tela E salva o HTML real da área de composição de
+   * mensagem no momento da falha. O print mostra "como parece"; o HTML
+   * mostra "como é de verdade" — depois de várias rodadas advinhando
+   * seletores às cegas, isso permite ver a estrutura exata em vez de tentar
+   * mais uma variação por palpite.
+   */
   private async captureDebugScreenshot(sessionId: string, page: Page): Promise<void> {
     try {
       const screenshotPath = this.getDebugScreenshotPath(sessionId);
@@ -267,6 +274,20 @@ export class PlaywrightDriver implements IBrowserDriver {
       logger.info({ sessionId, screenshotPath }, "Screenshot de erro capturado");
     } catch (screenshotError) {
       logger.warn({ sessionId, screenshotError }, "Falha ao capturar screenshot de erro (não crítico)");
+    }
+
+    try {
+      const html = await page.evaluate(() => {
+        const footer = document.querySelector("footer");
+        const main = document.querySelector("#main");
+        const target = footer ?? main ?? document.body;
+        return target.outerHTML;
+      });
+      const htmlPath = this.getDebugHtmlPath(sessionId);
+      await fs.writeFile(htmlPath, html, "utf-8");
+      logger.info({ sessionId, htmlPath }, "HTML de erro capturado");
+    } catch (htmlError) {
+      logger.warn({ sessionId, htmlError }, "Falha ao capturar HTML de erro (não crítico)");
     }
   }
 
@@ -323,11 +344,6 @@ export class PlaywrightDriver implements IBrowserDriver {
           // canvas pode estar re-renderizando; tenta de novo no próximo loop
         }
       } else if (qrWasShown) {
-        // O QR estava visível e sumiu — é a prova de que o celular escaneou
-        // com sucesso. NÃO esperamos a lista de conversas terminar de
-        // sincronizar pra considerar "conectado": a sincronização pode levar
-        // bem mais tempo (depende do volume de mensagens) e não é necessária
-        // pra já começar a enviar/receber mensagens pela automação.
         runtime.connected = true;
         runtime.connectedAt = Date.now();
         runtime.lastQr = null;
