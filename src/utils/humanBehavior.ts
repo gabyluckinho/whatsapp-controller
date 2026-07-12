@@ -33,8 +33,13 @@ export async function microDelay(minMs = 40, maxMs = 180): Promise<void> {
  * com pequenas variações de intervalo entre caracteres.
  */
 export async function humanType(page: Page, selector: string, text: string): Promise<void> {
-  const locator = page.locator(selector);
-  await locator.click();
+  const locator = page.locator(selector).first();
+  // force: true — evita falhas por elementos visualmente sobrepostos durante
+  // transições da UI (mesmo padrão de bug que já resolvemos no botão de
+  // anexar). .first() evita erro de "resolved to N elements" quando o
+  // seletor (propositalmente amplo, com várias alternativas) bate em mais
+  // de um elemento da página ao mesmo tempo.
+  await locator.click({ force: true, timeout: 15000 });
   for (const char of text) {
     await locator.pressSequentially(char, { delay: randomBetween(35, 140) });
     // ocasionalmente uma pausa maior, como alguém pensando
@@ -72,4 +77,3 @@ export function computeMinIntervalMs(sessionCreatedAt: Date): number {
   const maxPerMinute = isWarmingUp ? env.WARMUP_MAX_MESSAGES_PER_MINUTE : env.MAX_MESSAGES_PER_MINUTE;
   return Math.ceil(60_000 / Math.max(maxPerMinute, 1));
 }
-
