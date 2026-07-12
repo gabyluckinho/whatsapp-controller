@@ -34,7 +34,6 @@ export async function hardenContext(context: BrowserContext): Promise<void> {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => undefined });
 
-    // Alguns sistemas checam plugins/mimeTypes vazios como sinal de headless.
     Object.defineProperty(navigator, "plugins", {
       get: () => [1, 2, 3, 4, 5],
     });
@@ -42,7 +41,6 @@ export async function hardenContext(context: BrowserContext): Promise<void> {
       get: () => ["pt-BR", "pt", "en-US", "en"],
     });
 
-    // window.chrome ausente é outro sinal comum em Chromium automatizado.
     // @ts-expect-error - propriedade não tipada no lib.dom
     if (!window.chrome) {
       // @ts-expect-error - propriedade não tipada no lib.dom
@@ -61,5 +59,16 @@ export const RECOMMENDED_LAUNCH_ARGS = [
   "--disable-features=IsolateOrigins,site-per-process",
   "--no-sandbox",
   "--disable-dev-shm-usage",
+  "--disable-gpu",
+  "--disable-software-rasterizer",
+  "--disable-extensions",
+  "--disable-background-networking",
+  "--disable-background-timer-throttling",
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
+  "--disable-sync",
+  "--metrics-recording-only",
+  "--mute-audio",
+  "--no-first-run",
+  "--js-flags=--max-old-space-size=256",
 ];
-
