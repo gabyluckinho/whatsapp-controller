@@ -1,4 +1,7 @@
 import path from "node:path";
+import os from "node:os";
+import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { chromium, BrowserContext, Page } from "playwright";
 import { IBrowserDriver, SendTextParams, SendMediaParams, IncomingMessage } from "./BrowserDriver";
 import { WhatsAppSelectors } from "./selectors/whatsappSelectors";
@@ -19,12 +22,6 @@ interface SessionRuntime {
   healthCheckTimer: NodeJS.Timeout | null;
 }
 
-/**
- * Implementação real do IBrowserDriver usando Playwright + Chromium.
- * Cada sessão = 1 BrowserContext PERSISTENTE (perfil próprio em disco),
- * garantindo que reiniciar o container não derrube o login (requisito
- * de persistência) e que cada sessão tenha fingerprint estável (antiDetection).
- */
 export class PlaywrightDriver implements IBrowserDriver {
   private sessions = new Map<string, SessionRuntime>();
 
@@ -190,31 +187,70 @@ export class PlaywrightDriver implements IBrowserDriver {
   }
 
   private async sendMedia(
-    { sessionId, contact, filePath, caption }: SendMediaParams,
-    _kind: "image" | "audio" | "document" | "video"
+    { sessionId, contact, filePath, mediaUrl, caption }: SendMediaParams,
+    kind: "image" | "audio" | "document" | "video"
   ): Promise<void> {
     const runtime = this.requireRuntime(sessionId);
     const { page } = runtime;
 
-    await this.openChat(page, contact);
-    await simulatePresence(page);
-    await humanDelay();
-
-    await page.locator(WhatsAppSelectors.attachButton).click();
-    await microDelay(200, 500);
-
-    const fileInput = page.locator(WhatsAppSelectors.attachDocumentInput).first();
-    await fileInput.setInputFiles(filePath);
-    await microDelay(500, 1200);
-
-    if (caption) {
-      await humanType(page, WhatsAppSelectors.messageInput, caption);
+    if (!filePath && !mediaUrl) {
+      throw new Error("Informe filePath ou mediaUrl para enviar mídia");
     }
 
-    await microDelay(150, 400);
-    await page.locator(WhatsAppSelectors.sendButton).click();
+    const resolvedPath = filePath ?? (await this.downloadToTempFile(mediaUrl!, kind));
 
-    logger.info({ sessionId, contact, filePath }, "Mídia enviada");
+    try {
+      await this.openChat(page, contact);
+      await simulatePresence(page);
+      await humanDelay();
+
+      await page.locator(WhatsAppSelectors.attachButton).click();
+      await microDelay(200, 500);
+
+      const fileInput = page.locator(WhatsAppSelectors.attachDocumentInput).first();
+      await fileInput.setInputFiles(resolvedPath);
+      await microDelay(500, 1200);
+
+      if (caption) {
+        await humanType(page, WhatsAppSelectors.messageInput, caption);
+      }
+
+      await microDelay(150, 400);
+      await page.locator(WhatsAppSelectors.sendButton).click();
+
+      logger.info({ sessionId, contact, source: filePath ?? mediaUrl }, "Mídia enviada");
+    } finally {
+      if (!filePath && mediaUrl) {
+        await fs.unlink(resolvedPath).catch(() => {});
+      }
+    }
+  }
+
+  private async downloadToTempFile(url: string, kind: "image" | "audio" | "document" | "video"): Promise<string> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Falha ao baixar mídia da URL (status ${response.status})`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const extensionFromUrl = (() => {
+      try {
+        return path.extname(new URL(url).pathname);
+      } catch {
+        return "";
+      }
+    })();
+    const fallbackExtensions: Record<typeof kind, string> = {
+      image: ".jpg",
+      audio: ".ogg",
+      document: ".pdf",
+      video: ".mp4",
+    };
+    const extension = extensionFromUrl || fallbackExtensions[kind];
+
+    const tempPath = path.join(os.tmpdir(), `wa-media-${randomUUID()}${extension}`);
+    await fs.writeFile(tempPath, buffer);
+    return tempPath;
   }
 
   private async watchForQrOrLoad(sessionId: string, runtime: SessionRuntime): Promise<void> {
@@ -243,11 +279,6 @@ export class PlaywrightDriver implements IBrowserDriver {
           // canvas pode estar re-renderizando; tenta de novo no próximo loop
         }
       } else if (qrWasShown) {
-        // O QR estava visível e sumiu — é a prova de que o celular escaneou
-        // com sucesso. NÃO esperamos a lista de conversas terminar de
-        // sincronizar pra considerar "conectado": a sincronização pode levar
-        // bem mais tempo (depende do volume de mensagens) e não é necessária
-        // pra já começar a enviar/receber mensagens pela automação.
         runtime.connected = true;
         runtime.connectedAt = Date.now();
         runtime.lastQr = null;
