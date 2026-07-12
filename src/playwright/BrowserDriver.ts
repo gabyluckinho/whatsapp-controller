@@ -21,15 +21,24 @@ export interface IncomingMessage {
   timestamp: string;
 }
 
+/**
+ * Interface que abstrai o navegador. Permite testar SessionSupervisor e
+ * QueueWorker com um driver fake, sem precisar de um Chromium real rodando.
+ */
 export interface IBrowserDriver {
   startSession(sessionId: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   getQrCode(sessionId: string): Promise<string | null>;
   isConnected(sessionId: string): Promise<boolean>;
 
+  /**
+   * Solicita o código de pareamento por número de telefone (alternativa ao QR).
+   * phoneNumber deve vir só com dígitos, incluindo código do país (ex: 5511999999999).
+   * Retorna o código de 8 caracteres que o usuário digita no celular.
+   */
   requestPairingCode(sessionId: string, phoneNumber: string): Promise<string>;
 
-   /** Caminho do último screenshot de erro capturado (pode não existir ainda). */
+  /** Caminho do último screenshot de erro capturado (pode não existir ainda). */
   getDebugScreenshotPath(sessionId: string): string;
 
   /** Caminho do HTML real da área de composição de mensagem no momento do erro. */
