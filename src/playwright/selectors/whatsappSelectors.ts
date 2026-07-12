@@ -15,8 +15,8 @@ export const WhatsAppSelectors = {
   // nunca batia (causa real dos timeouts de envio). Agora usamos a estrutura
   // do HTML e incluímos o padrão mais novo do WhatsApp Web (editor "Lexical",
   // atributo data-lexical-editor, que substituiu o antigo sistema data-tab).
-  chatSearchInput:
-    '#side div[contenteditable="true"][data-lexical-editor="true"], #side div[contenteditable="true"], #pane-side div[contenteditable="true"], div[contenteditable="true"][data-tab="3"]',
+chatSearchInput:
+    '#side div[contenteditable="true"][data-lexical-editor="true"], #side input[type="text"], #side div[contenteditable="true"], #pane-side div[contenteditable="true"], div[contenteditable="true"][data-tab="3"]',
   messageInput: 'div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"]',
   sendButton: 'button[aria-label="Send"], button[aria-label="Enviar"], [data-icon="send"]',
   attachButton: 'div[title="Attach"], div[title="Anexar"], button[aria-label="Attach"], button[aria-label="Anexar"], [data-icon="attach"], [data-icon="plus"]',
