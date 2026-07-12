@@ -38,7 +38,7 @@ export class QueueManager {
     const existing = this.queues.get(sessionId);
     if (existing) return existing;
 
-    const queue = new Queue<SendMessageJobData>(`session:${sessionId}`, {
+  const queue = new Queue<SendMessageJobData>(`session-${sessionId}`, {
       connection: this.connection,
       defaultJobOptions: {
         attempts: 3,
