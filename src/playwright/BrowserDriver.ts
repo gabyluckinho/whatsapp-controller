@@ -21,10 +21,6 @@ export interface IncomingMessage {
   timestamp: string;
 }
 
-/**
- * Interface que abstrai o navegador. Permite testar SessionSupervisor e
- * QueueWorker com um driver fake, sem precisar de um Chromium real rodando.
- */
 export interface IBrowserDriver {
   startSession(sessionId: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
@@ -32,6 +28,9 @@ export interface IBrowserDriver {
   isConnected(sessionId: string): Promise<boolean>;
 
   requestPairingCode(sessionId: string, phoneNumber: string): Promise<string>;
+
+  /** Caminho do último screenshot de erro capturado (pode não existir ainda). */
+  getDebugScreenshotPath(sessionId: string): string;
 
   sendText(params: SendTextParams): Promise<void>;
   sendImage(params: SendMediaParams): Promise<void>;
