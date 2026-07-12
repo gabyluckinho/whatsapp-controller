@@ -26,7 +26,7 @@ export function createSessionWorker(
   };
 
   const worker = new Worker<SendMessageJobData>(
-    `session:${sessionId}`,
+       `session-${sessionId}`,
     async (job: Job<SendMessageJobData>) => {
       const { contact, type, payload } = job.data;
 
