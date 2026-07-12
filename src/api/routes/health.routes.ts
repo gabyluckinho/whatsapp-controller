@@ -4,9 +4,14 @@ import { SessionManager } from "../../sessions/SessionManager";
 export function healthRouter(sessionManager: SessionManager): Router {
   const router = Router();
 
-  router.get("/", (_req, res) => {
+    router.get("/", (_req, res) => {
     const sessions = sessionManager.list().map((s) => ({ id: s.sessionId, status: s.getState() }));
-    res.json({ status: "ok", uptime: process.uptime(), sessions });
+    res.json({
+      status: "ok",
+      uptime: process.uptime(),
+      sessions,
+      buildMarker: "debug-screenshot-v1", // temporário, só pra confirmar deploy — remover depois
+    });
   });
 
   return router;
