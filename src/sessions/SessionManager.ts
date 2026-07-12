@@ -115,7 +115,14 @@ export class SessionManager {
     );
     this.workers.set(id, worker);
 
-    await supervisor.start();
+    // IMPORTANTE: não aguardamos supervisor.start() aqui. Ele pode levar
+    // de alguns segundos a minutos até detectar QR/login/timeout, e a API
+    // (POST /sessions, usada pelo botão "Adicionar número" do painel) precisa
+    // responder na hora — senão a tela trava esperando. O boot do navegador
+    // roda em segundo plano; o painel acompanha status/QR via polling.
+    supervisor.start().catch((err) => {
+      logger.error({ sessionId: id, err }, "Falha ao iniciar sessão em segundo plano");
+    });
     return supervisor;
   }
 
@@ -143,5 +150,9 @@ export class SessionManager {
     this.requireSession(sessionId); // valida existência, lança se não encontrada
     return this.driver.getQrCode(sessionId);
   }
-}
 
+  async requestPairingCode(sessionId: string, phoneNumber: string): Promise<string> {
+    this.requireSession(sessionId);
+    return this.driver.requestPairingCode(sessionId, phoneNumber);
+  }
+}
