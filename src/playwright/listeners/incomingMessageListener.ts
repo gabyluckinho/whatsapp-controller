@@ -13,6 +13,13 @@ import { logger } from "../../utils/logger";
  * SEMPRE atualiza — nome do contato + prévia da última mensagem — mesmo
  * sem a conversa estar aberta. É isso que observamos agora.
  *
+ * BUG CORRIGIDO: antes líamos o TEXTO VISÍVEL do contato (span[title]
+ * .textContent), que é o NOME SALVO quando o número já está na agenda do
+ * celular conectado (ex: "Maria"). Isso é ambíguo/errado como identificador
+ * pra responder depois — precisa ser o número de telefone. Agora lemos o
+ * ATRIBUTO title desse mesmo elemento, que no WhatsApp Web guarda o
+ * identificador completo (número), não o nome de exibição.
+ *
  * Limitações conhecidas dessa abordagem (heurística, não garantida):
  * - Mídia (foto/áudio/vídeo) aparece na prévia como texto tipo "Foto",
  *   "Áudio" etc, não o conteúdo em si.
@@ -50,6 +57,14 @@ export async function attachIncomingMessageListener(
         return null;
       }
 
+      function getContactIdentifier(row: Element): string | null {
+        const titleEl = row.querySelector("span[title]");
+        const titleAttr = titleEl?.getAttribute("title");
+        if (titleAttr?.trim()) return titleAttr.trim();
+
+        return getText(row, ['span[dir="auto"]', "span[title]"]);
+      }
+
       function extractChatRows(): Element[] {
         return Array.from(
           document.querySelectorAll('[data-testid="cell-frame-container"], div[role="listitem"]')
@@ -59,10 +74,10 @@ export async function attachIncomingMessageListener(
       function checkChats() {
         const rows = extractChatRows();
         rows.forEach((row, index) => {
-          const name = getText(row, ['span[title]', 'span[dir="auto"]']) || `contato-${index}`;
+          const contact = getContactIdentifier(row) ?? `contato-${index}`;
           const preview =
             getText(row, ['span[dir="ltr"]', 'span.selectable-text', '[data-testid="last-msg"]']) || "";
-          const key = name;
+          const key = contact;
           const previous = seenPreviews.get(key);
 
           const isOutgoing = preview.startsWith("Você:") || preview.startsWith("You:");
@@ -70,7 +85,7 @@ export async function attachIncomingMessageListener(
           if (previous !== undefined && previous !== preview && preview && !isOutgoing) {
             // @ts-expect-error - função exposta dinamicamente pelo Playwright
             window[fnName]?.({
-              contact: name,
+              contact,
               text: preview,
               timestamp: new Date().toISOString(),
             });
@@ -83,8 +98,6 @@ export async function attachIncomingMessageListener(
       const observer = new MutationObserver(() => checkChats());
       observer.observe(container, { childList: true, subtree: true, characterData: true });
 
-      // Primeira leitura só registra o estado atual, sem disparar eventos —
-      // evita reportar como "novas" mensagens que já estavam na tela.
       checkChats();
     },
     { fnName: exposedName }
