@@ -68,7 +68,6 @@ export const RECOMMENDED_LAUNCH_ARGS = [
   "--disable-renderer-backgrounding",
   "--disable-sync",
   "--metrics-recording-only",
-  "--mute-audio",
+   "--mute-audio",
   "--no-first-run",
-  "--js-flags=--max-old-space-size=256",
 ];
