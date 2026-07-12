@@ -31,9 +31,9 @@ services:
         condition: on-failure
       resources:
         limits:
-          memory: 3g
+          memory: 8g
         reservations:
-          memory: 1g
+          memory: 2g
 
   redis:
     image: redis:7-alpine
