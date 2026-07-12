@@ -146,7 +146,10 @@ export class PlaywrightDriver implements IBrowserDriver {
 
       await humanType(page, WhatsAppSelectors.messageInput, text);
       await microDelay(150, 400);
-      await page.locator(WhatsAppSelectors.sendButton).first().click();
+      // force: true — mesmo padrão de bug já visto no botão de anexar e no
+      // campo de digitar: o elemento é encontrado, mas o clique "educado"
+      // trava esperando algo que está só visualmente sobrepondo o botão.
+      await page.locator(WhatsAppSelectors.sendButton).first().click({ force: true, timeout: 15000 });
 
       logger.info({ sessionId, contact }, "Mensagem de texto enviada");
     } catch (error) {
@@ -208,10 +211,6 @@ export class PlaywrightDriver implements IBrowserDriver {
     await page.keyboard.press("Enter");
     await microDelay(300, 700);
 
-    // Checa se o contato bloqueou esse número — se sim, nem tenta anexar ou
-    // digitar (esses elementos não existem nessa tela), falha na hora com
-    // uma mensagem clara em vez de travar 30s tentando clicar em algo que
-    // não existe.
     const isBlocked = await page.locator(WhatsAppSelectors.blockedContactIndicator).count();
     if (isBlocked > 0) {
       throw new Error(
@@ -250,7 +249,7 @@ export class PlaywrightDriver implements IBrowserDriver {
       }
 
       await microDelay(150, 400);
-      await page.locator(WhatsAppSelectors.sendButton).first().click();
+      await page.locator(WhatsAppSelectors.sendButton).first().click({ force: true, timeout: 15000 });
 
       logger.info({ sessionId, contact, source: filePath ?? mediaUrl }, "Mídia enviada");
     } catch (error) {
@@ -298,108 +297,4 @@ export class PlaywrightDriver implements IBrowserDriver {
   private async downloadToTempFile(url: string, kind: "image" | "audio" | "document" | "video"): Promise<string> {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Falha ao baixar mídia da URL (status ${response.status})`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-
-    const extensionFromUrl = (() => {
-      try {
-        return path.extname(new URL(url).pathname);
-      } catch {
-        return "";
-      }
-    })();
-    const fallbackExtensions: Record<typeof kind, string> = {
-      image: ".jpg",
-      audio: ".ogg",
-      document: ".pdf",
-      video: ".mp4",
-    };
-    const extension = extensionFromUrl || fallbackExtensions[kind];
-
-    const tempPath = path.join(os.tmpdir(), `wa-media-${randomUUID()}${extension}`);
-    await fs.writeFile(tempPath, buffer);
-    return tempPath;
-  }
-
-  private async watchForQrOrLoad(sessionId: string, runtime: SessionRuntime): Promise<void> {
-    const { page } = runtime;
-    const deadline = Date.now() + QR_TIMEOUT_MS;
-    let qrWasShown = false;
-
-    while (Date.now() < deadline) {
-      const loggedIn = await page.locator(WhatsAppSelectors.loggedInIndicator).count();
-      if (loggedIn > 0) {
-        runtime.connected = true;
-        runtime.connectedAt = Date.now();
-        runtime.lastQr = null;
-        return;
-      }
-
-      const qrCanvas = page.locator(WhatsAppSelectors.qrCodeCanvas);
-      const qrCount = await qrCanvas.count();
-
-      if (qrCount > 0) {
-        qrWasShown = true;
-        try {
-          const qrDataUrl = await qrCanvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL());
-          runtime.lastQr = qrDataUrl;
-        } catch {
-          // canvas pode estar re-renderizando; tenta de novo no próximo loop
-        }
-      } else if (qrWasShown) {
-        runtime.connected = true;
-        runtime.connectedAt = Date.now();
-        runtime.lastQr = null;
-        logger.info({ sessionId }, "QR escaneado — conectado (sincronização de conversas pode continuar em segundo plano)");
-        return;
-      }
-
-      await microDelay(1000, 1500);
-    }
-
-    logger.warn({ sessionId }, "Timeout aguardando QR code / carregamento da sessão");
-  }
-
-  private async attachIncomingMessageListener(sessionId: string, runtime: SessionRuntime): Promise<void> {
-    try {
-      await attachIncomingMessageListener(runtime.page, sessionId, (msg) => {
-        runtime.incomingHandlers.forEach((handler) => handler(msg));
-      });
-    } catch (error) {
-      logger.error({ sessionId, error }, "Falha ao anexar listener de mensagens recebidas");
-    }
-  }
-
-  private attachDisconnectionWatcher(sessionId: string, runtime: SessionRuntime): void {
-    const handleDisconnect = (reason: string) => {
-      if (!runtime.connected) return;
-      runtime.connected = false;
-      runtime.disconnectHandlers.forEach((h) => h());
-      logger.warn({ sessionId, reason }, "Sessão desconectada");
-    };
-
-    runtime.page.on("close", () => handleDisconnect("página fechou"));
-    runtime.context.on("close", () => handleDisconnect("navegador encerrou"));
-  }
-
-  private startHealthCheck(sessionId: string, runtime: SessionRuntime): void {
-    const GRACE_PERIOD_MS = 90_000;
-
-    runtime.healthCheckTimer = setInterval(async () => {
-      if (!runtime.connected) return;
-      if (runtime.connectedAt && Date.now() - runtime.connectedAt < GRACE_PERIOD_MS) return;
-
-      try {
-        const stillLoggedIn = await runtime.page.locator(WhatsAppSelectors.loggedInIndicator).count();
-        if (stillLoggedIn === 0) {
-          runtime.connected = false;
-          runtime.disconnectHandlers.forEach((h) => h());
-          logger.warn({ sessionId }, "Sessão perdeu login (detectado via checagem ativa)");
-        }
-      } catch (error) {
-        logger.warn({ sessionId, error }, "Falha ao checar saúde da sessão (tentativa isolada)");
-      }
-    }, 20_000);
-  }
-}
+      throw new Error(
