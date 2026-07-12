@@ -139,15 +139,20 @@ export class PlaywrightDriver implements IBrowserDriver {
     const runtime = this.requireRuntime(sessionId);
     const { page } = runtime;
 
-    await this.openChat(page, contact);
-    await simulatePresence(page);
-    await humanDelay();
+    try {
+      await this.openChat(page, contact);
+      await simulatePresence(page);
+      await humanDelay();
 
-    await humanType(page, WhatsAppSelectors.messageInput, text);
-    await microDelay(150, 400);
-    await page.locator(WhatsAppSelectors.sendButton).click();
+      await humanType(page, WhatsAppSelectors.messageInput, text);
+      await microDelay(150, 400);
+      await page.locator(WhatsAppSelectors.sendButton).click();
 
-    logger.info({ sessionId, contact }, "Mensagem de texto enviada");
+      logger.info({ sessionId, contact }, "Mensagem de texto enviada");
+    } catch (error) {
+      await this.captureDebugScreenshot(sessionId, page);
+      throw error;
+    }
   }
 
   async sendImage(params: SendMediaParams): Promise<void> {
@@ -179,7 +184,19 @@ export class PlaywrightDriver implements IBrowserDriver {
   }
 
   private async openChat(page: Page, contact: string): Promise<void> {
-    await page.locator(WhatsAppSelectors.chatSearchInput).click();
+    try {
+      const searchIcon = page
+        .locator(
+          '[data-icon="search"], [data-icon="search-refreshed"], button[aria-label="Search"], button[aria-label="Pesquisar"]'
+        )
+        .first();
+      await searchIcon.click({ timeout: 3000 });
+      await microDelay(200, 400);
+    } catch {
+      // ícone não existe ou a caixa já está visível — segue normalmente
+    }
+
+    await page.locator(WhatsAppSelectors.chatSearchInput).click({ timeout: 15000 });
     await humanType(page, WhatsAppSelectors.chatSearchInput, contact);
     await microDelay(400, 900);
     await page.keyboard.press("Enter");
@@ -219,10 +236,27 @@ export class PlaywrightDriver implements IBrowserDriver {
       await page.locator(WhatsAppSelectors.sendButton).click();
 
       logger.info({ sessionId, contact, source: filePath ?? mediaUrl }, "Mídia enviada");
+    } catch (error) {
+      await this.captureDebugScreenshot(sessionId, page);
+      throw error;
     } finally {
       if (!filePath && mediaUrl) {
         await fs.unlink(resolvedPath).catch(() => {});
       }
+    }
+  }
+
+  getDebugScreenshotPath(sessionId: string): string {
+    return path.join(VOLUMES_BASE_PATH, `session-${sessionId}`, "last-error.png");
+  }
+
+  private async captureDebugScreenshot(sessionId: string, page: Page): Promise<void> {
+    try {
+      const screenshotPath = this.getDebugScreenshotPath(sessionId);
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+      logger.info({ sessionId, screenshotPath }, "Screenshot de erro capturado");
+    } catch (screenshotError) {
+      logger.warn({ sessionId, screenshotError }, "Falha ao capturar screenshot de erro (não crítico)");
     }
   }
 
