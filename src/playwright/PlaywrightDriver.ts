@@ -13,6 +13,7 @@ interface SessionRuntime {
   page: Page;
   lastQr: string | null;
   connected: boolean;
+  connectedAt: number | null;
   incomingHandlers: Array<(msg: IncomingMessage) => void>;
   disconnectHandlers: Array<() => void>;
   healthCheckTimer: NodeJS.Timeout | null;
@@ -57,6 +58,7 @@ export class PlaywrightDriver implements IBrowserDriver {
       page,
       lastQr: null,
       connected: false,
+      connectedAt: null,
       incomingHandlers: [],
       disconnectHandlers: [],
       healthCheckTimer: null,
@@ -218,23 +220,39 @@ export class PlaywrightDriver implements IBrowserDriver {
   private async watchForQrOrLoad(sessionId: string, runtime: SessionRuntime): Promise<void> {
     const { page } = runtime;
     const deadline = Date.now() + QR_TIMEOUT_MS;
+    let qrWasShown = false;
 
     while (Date.now() < deadline) {
       const loggedIn = await page.locator(WhatsAppSelectors.loggedInIndicator).count();
       if (loggedIn > 0) {
         runtime.connected = true;
+        runtime.connectedAt = Date.now();
         runtime.lastQr = null;
         return;
       }
 
       const qrCanvas = page.locator(WhatsAppSelectors.qrCodeCanvas);
-      if ((await qrCanvas.count()) > 0) {
+      const qrCount = await qrCanvas.count();
+
+      if (qrCount > 0) {
+        qrWasShown = true;
         try {
           const qrDataUrl = await qrCanvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL());
           runtime.lastQr = qrDataUrl;
         } catch {
           // canvas pode estar re-renderizando; tenta de novo no próximo loop
         }
+      } else if (qrWasShown) {
+        // O QR estava visível e sumiu — é a prova de que o celular escaneou
+        // com sucesso. NÃO esperamos a lista de conversas terminar de
+        // sincronizar pra considerar "conectado": a sincronização pode levar
+        // bem mais tempo (depende do volume de mensagens) e não é necessária
+        // pra já começar a enviar/receber mensagens pela automação.
+        runtime.connected = true;
+        runtime.connectedAt = Date.now();
+        runtime.lastQr = null;
+        logger.info({ sessionId }, "QR escaneado — conectado (sincronização de conversas pode continuar em segundo plano)");
+        return;
       }
 
       await microDelay(1000, 1500);
@@ -266,8 +284,12 @@ export class PlaywrightDriver implements IBrowserDriver {
   }
 
   private startHealthCheck(sessionId: string, runtime: SessionRuntime): void {
+    const GRACE_PERIOD_MS = 90_000;
+
     runtime.healthCheckTimer = setInterval(async () => {
       if (!runtime.connected) return;
+      if (runtime.connectedAt && Date.now() - runtime.connectedAt < GRACE_PERIOD_MS) return;
+
       try {
         const stillLoggedIn = await runtime.page.locator(WhatsAppSelectors.loggedInIndicator).count();
         if (stillLoggedIn === 0) {
