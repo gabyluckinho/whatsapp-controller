@@ -8,12 +8,6 @@ import { MessageRepository } from "../database/repositories/MessageRepository";
 import { computeMinIntervalMs, sleep } from "../utils/humanBehavior";
 import { childLogger } from "../utils/logger";
 
-/**
- * Um worker por sessão, com `concurrency: 1` — garante que NUNCA duas
- * mensagens da mesma sessão sejam processadas ao mesmo tempo (requisito
- * de negócio) e, junto com o delay mínimo dinâmico, mantém o volume de
- * envio dentro de um padrão que se assemelha a uso humano.
- */
 export function createSessionWorker(
   sessionId: string,
   sessionCreatedAt: Date,
@@ -36,8 +30,6 @@ export function createSessionWorker(
     async (job: Job<SendMessageJobData>) => {
       const { contact, type, payload } = job.data;
 
-      // Respiro mínimo antes de processar o próximo job — mesmo que a fila
-      // esteja cheia, isso impede rajadas de mensagens em sequência.
       const minInterval = computeMinIntervalMs(sessionCreatedAt);
       await sleep(minInterval);
 
@@ -47,16 +39,39 @@ export function createSessionWorker(
             await driver.sendText({ sessionId, contact, text: payload.text as string });
             break;
           case "image":
-            await driver.sendImage({ sessionId, contact, filePath: payload.filePath as string, caption: payload.caption as string | undefined });
+            await driver.sendImage({
+              sessionId,
+              contact,
+              filePath: payload.filePath as string | undefined,
+              mediaUrl: payload.mediaUrl as string | undefined,
+              caption: payload.caption as string | undefined,
+            });
             break;
           case "audio":
-            await driver.sendAudio({ sessionId, contact, filePath: payload.filePath as string });
+            await driver.sendAudio({
+              sessionId,
+              contact,
+              filePath: payload.filePath as string | undefined,
+              mediaUrl: payload.mediaUrl as string | undefined,
+            });
             break;
           case "document":
-            await driver.sendDocument({ sessionId, contact, filePath: payload.filePath as string, caption: payload.caption as string | undefined });
+            await driver.sendDocument({
+              sessionId,
+              contact,
+              filePath: payload.filePath as string | undefined,
+              mediaUrl: payload.mediaUrl as string | undefined,
+              caption: payload.caption as string | undefined,
+            });
             break;
           case "video":
-            await driver.sendVideo({ sessionId, contact, filePath: payload.filePath as string, caption: payload.caption as string | undefined });
+            await driver.sendVideo({
+              sessionId,
+              contact,
+              filePath: payload.filePath as string | undefined,
+              mediaUrl: payload.mediaUrl as string | undefined,
+              caption: payload.caption as string | undefined,
+            });
             break;
         }
 
@@ -67,12 +82,12 @@ export function createSessionWorker(
         await messageRepository.recordSent(sessionId, contact, type, "error");
         await logRepository.record(sessionId, "error", "send_failed", String(error));
         await webhookDispatcher.emit("message.sent", { sessionId, jobId: job.id, contact, type, status: "error" });
-        throw error; // deixa o BullMQ aplicar o retry configurado na fila
+        throw error;
       }
     },
     {
       connection,
-      concurrency: 1, // trava dura: nunca 2 mensagens simultâneas na mesma sessão
+      concurrency: 1,
       limiter: {
         max: 1,
         duration: computeMinIntervalMs(sessionCreatedAt),
@@ -86,4 +101,3 @@ export function createSessionWorker(
 
   return worker;
 }
-
