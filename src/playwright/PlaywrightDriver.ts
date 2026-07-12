@@ -207,6 +207,17 @@ export class PlaywrightDriver implements IBrowserDriver {
     await microDelay(400, 900);
     await page.keyboard.press("Enter");
     await microDelay(300, 700);
+
+    // Checa se o contato bloqueou esse número — se sim, nem tenta anexar ou
+    // digitar (esses elementos não existem nessa tela), falha na hora com
+    // uma mensagem clara em vez de travar 30s tentando clicar em algo que
+    // não existe.
+    const isBlocked = await page.locator(WhatsAppSelectors.blockedContactIndicator).count();
+    if (isBlocked > 0) {
+      throw new Error(
+        `O contato "${contact}" bloqueou este número — não é possível enviar mensagens até ser desbloqueado`
+      );
+    }
   }
 
   private async sendMedia(
@@ -260,13 +271,6 @@ export class PlaywrightDriver implements IBrowserDriver {
     return path.join(VOLUMES_BASE_PATH, `session-${sessionId}`, "last-error.html");
   }
 
-  /**
-   * Tira um print da tela E salva o HTML real da área de composição de
-   * mensagem no momento da falha. O print mostra "como parece"; o HTML
-   * mostra "como é de verdade" — depois de várias rodadas advinhando
-   * seletores às cegas, isso permite ver a estrutura exata em vez de tentar
-   * mais uma variação por palpite.
-   */
   private async captureDebugScreenshot(sessionId: string, page: Page): Promise<void> {
     try {
       const screenshotPath = this.getDebugScreenshotPath(sessionId);
