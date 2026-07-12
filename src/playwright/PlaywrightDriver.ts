@@ -181,8 +181,8 @@ export class PlaywrightDriver implements IBrowserDriver {
     const deadline = Date.now() + QR_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
-      const appLoaded = await page.locator(WhatsAppSelectors.appLoaded).count();
-      if (appLoaded > 0) {
+            const loggedIn = await page.locator(WhatsAppSelectors.loggedInIndicator).count();
+      if (loggedIn > 0) {
         runtime.connected = true;
         runtime.lastQr = null;
         return;
