@@ -18,7 +18,7 @@ export const USER_AGENT_POOL = [
 ];
 
 export const QR_POLL_INTERVAL_MS = 2000;
-export const QR_TIMEOUT_MS = 90_000;
+export const QR_TIMEOUT_MS = 180_000; // 3 minutos — tempo real pra pegar o celular e escanear
 
 export const RECONNECT_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000, 120_000];
 
