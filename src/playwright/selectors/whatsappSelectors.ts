@@ -13,10 +13,16 @@ export const WhatsAppSelectors = {
   // não serve pra detectar "conectado". Usamos a barra lateral de conversas
   // (só existe depois do login real) como sinal de conexão confirmada.
   loggedInIndicator: '#pane-side, div[aria-label="Chat list"]',
-  chatSearchInput: 'div[contenteditable="true"][data-tab="3"], div[aria-label="Search input textbox"]',
+  // O antigo seletor dependia de aria-label="Search input textbox" (inglês) —
+  // como a sessão roda em pt-BR, esse texto vem em português e o seletor
+  // nunca batia (causa real dos timeouts de envio). Agora usamos a estrutura
+  // do HTML (o único campo editável dentro da barra lateral #side/#pane-side
+  // antes de abrir uma conversa é o campo de busca), que não depende de idioma.
+  chatSearchInput:
+    '#side div[contenteditable="true"], #pane-side div[contenteditable="true"], div[contenteditable="true"][data-tab="3"]',
   messageInput: 'div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"]',
-  sendButton: 'button[aria-label="Send"]',
-  attachButton: 'div[title="Attach"], button[aria-label="Attach"]',
+  sendButton: 'button[aria-label="Send"], button[aria-label="Enviar"], [data-icon="send"]',
+  attachButton: 'div[title="Attach"], div[title="Anexar"], button[aria-label="Attach"], button[aria-label="Anexar"], [data-icon="attach"], [data-icon="plus"]',
   attachImageInput: 'input[accept*="image"]',
   attachDocumentInput: 'input[accept*="*"]',
   incomingMessageBubble: 'div[data-testid="msg-container"], div.message-in',
