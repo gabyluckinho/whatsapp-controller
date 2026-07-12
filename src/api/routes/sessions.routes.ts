@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import fs from "node:fs/promises";
 import { SessionManager } from "../../sessions/SessionManager";
 import { LogRepository } from "../../database/repositories/LogRepository";
 import { asyncHandler } from "../middlewares/asyncHandler";
@@ -169,6 +170,25 @@ export function sessionsRouter(sessionManager: SessionManager, logRepository: Lo
         });
       } catch (error) {
         res.status(404).json({ error: error instanceof Error ? error.message : `Sessão "${req.params.id}" não encontrada` });
+      }
+    })
+  );
+
+  // Mostra o HTML real da área de composição de mensagem no momento do
+  // último erro — mais preciso que o screenshot pra corrigir seletores,
+  // já que mostra os atributos/estrutura reais, não só a aparência visual.
+  // Lê o arquivo manualmente (em vez de sendFile) pra garantir texto puro —
+  // sendFile serviria como text/html e o navegador tentaria renderizar a
+  // página em vez de mostrar o código como texto.
+  router.get(
+    "/:id/debug-html",
+    asyncHandler(async (req, res) => {
+      try {
+        const htmlPath = sessionManager.getDebugHtmlPath(req.params.id);
+        const content = await fs.readFile(htmlPath, "utf-8");
+        res.type("text/plain").send(content);
+      } catch (error) {
+        res.status(404).json({ error: "Nenhum HTML de erro disponível ainda para essa sessão" });
       }
     })
   );
