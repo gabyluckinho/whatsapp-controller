@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { SessionManager } from "../../sessions/SessionManager";
+import { asyncHandler } from "../middlewares/asyncHandler";
 
 const textSchema = z.object({ contact: z.string().min(3), text: z.string().min(1) });
 const mediaSchema = z
@@ -18,41 +19,52 @@ export function messagesRouter(sessionManager: SessionManager): Router {
   const router = Router();
   const queueManager = sessionManager.getQueueManager();
 
-  async function enqueue(
-    req: any,
-    res: any,
-    type: "text" | "image" | "audio" | "document" | "video",
-    schema: z.ZodTypeAny
-  ) {
-    const supervisor = sessionManager.requireSession(req.params.id);
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
-      return;
-    }
+  function enqueue(type: "text" | "image" | "audio" | "document" | "video", schema: z.ZodTypeAny) {
+    return asyncHandler(async (req, res) => {
+      let supervisor;
+      try {
+        supervisor = sessionManager.requireSession(req.params.id);
+      } catch (error) {
+        res.status(404).json({ error: error instanceof Error ? error.message : `Sessão "${req.params.id}" não encontrada` });
+        return;
+      }
 
-    const { contact, ...rest } = parsed.data;
-    const jobId = await queueManager.enqueue(supervisor.sessionId, supervisor.getCreatedAt(), {
-      sessionId: supervisor.sessionId,
-      contact,
-      type,
-      payload: rest,
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+
+      const { contact, ...rest } = parsed.data;
+      const jobId = await queueManager.enqueue(supervisor.sessionId, supervisor.getCreatedAt(), {
+        sessionId: supervisor.sessionId,
+        contact,
+        type,
+        payload: rest,
+      });
+
+      res.status(202).json({ jobId, queued: true });
     });
-
-    res.status(202).json({ jobId, queued: true });
   }
 
-  router.post("/:id/messages/text", (req, res) => enqueue(req, res, "text", textSchema));
-  router.post("/:id/messages/image", (req, res) => enqueue(req, res, "image", mediaSchema));
-  router.post("/:id/messages/audio", (req, res) => enqueue(req, res, "audio", mediaSchema));
-  router.post("/:id/messages/document", (req, res) => enqueue(req, res, "document", mediaSchema));
-  router.post("/:id/messages/video", (req, res) => enqueue(req, res, "video", mediaSchema));
+  router.post("/:id/messages/text", enqueue("text", textSchema));
+  router.post("/:id/messages/image", enqueue("image", mediaSchema));
+  router.post("/:id/messages/audio", enqueue("audio", mediaSchema));
+  router.post("/:id/messages/document", enqueue("document", mediaSchema));
+  router.post("/:id/messages/video", enqueue("video", mediaSchema));
 
-  router.post("/:id/queue/clear", async (req, res) => {
-    const supervisor = sessionManager.requireSession(req.params.id);
-    await queueManager.clear(supervisor.sessionId);
-    res.json({ message: "Fila limpa" });
-  });
+  router.post(
+    "/:id/queue/clear",
+    asyncHandler(async (req, res) => {
+      try {
+        const supervisor = sessionManager.requireSession(req.params.id);
+        await queueManager.clear(supervisor.sessionId);
+        res.json({ message: "Fila limpa" });
+      } catch (error) {
+        res.status(404).json({ error: error instanceof Error ? error.message : `Sessão "${req.params.id}" não encontrada` });
+      }
+    })
+  );
 
   return router;
 }
