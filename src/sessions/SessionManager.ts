@@ -1,6 +1,7 @@
-import { sessionDefinitions } from "../config/env";
+import { sessionDefinitions, env } from "../config/env";
 import { PlaywrightDriver } from "../playwright/PlaywrightDriver";
 import { SessionSupervisor } from "./SessionSupervisor";
+import { SessionState } from "./SessionState";
 import { LogRepository } from "../database/repositories/LogRepository";
 import { MessageRepository } from "../database/repositories/MessageRepository";
 import { SessionRepository } from "../database/repositories/SessionRepository";
@@ -43,8 +44,6 @@ export class SessionManager {
       records = await this.sessionRepository.listActive();
     }
 
-    // Stagger entre inicializações: sessões não sobem todas no mesmo instante
-    // (reduz padrão de uso robótico e picos de carga na VPS).
     await Promise.allSettled(
       records.map(async (record) => {
         const staggerMs = Math.random() * 4000;
@@ -56,11 +55,6 @@ export class SessionManager {
     logger.info({ total: this.supervisors.size }, "Todas as sessões foram inicializadas (ou tentaram ser)");
   }
 
-  /**
-   * Cria uma sessão nova via Plataforma: grava no Supabase, sobe o supervisor
-   * e o worker da fila, e retorna imediatamente — o QR code fica disponível
-   * em poucos segundos via GET /sessions/:id/qrcode.
-   */
   async addSession(id: string, name: string): Promise<SessionSupervisor> {
     if (this.supervisors.has(id)) {
       throw new Error(`Sessão "${id}" já existe`);
@@ -76,7 +70,6 @@ export class SessionManager {
     return supervisor;
   }
 
-  /** Remove uma sessão: para o navegador, o worker, e desativa o registro (soft delete). */
   async removeSession(id: string): Promise<void> {
     const supervisor = this.requireSession(id);
     await supervisor.stop();
@@ -101,7 +94,8 @@ export class SessionManager {
       this.logRepository,
       this.webhookDispatcher,
       this.messageRepository,
-      this.sessionRepository
+      this.sessionRepository,
+      (sessionId, sessionName, newState) => this.notifySessionDown(sessionId, sessionName, newState)
     );
     this.supervisors.set(id, supervisor);
 
@@ -115,11 +109,6 @@ export class SessionManager {
     );
     this.workers.set(id, worker);
 
-    // IMPORTANTE: não aguardamos supervisor.start() aqui. Ele pode levar
-    // de alguns segundos a minutos até detectar QR/login/timeout, e a API
-    // (POST /sessions, usada pelo botão "Adicionar número" do painel) precisa
-    // responder na hora — senão a tela trava esperando. O boot do navegador
-    // roda em segundo plano; o painel acompanha status/QR via polling.
     supervisor.start().catch((err) => {
       logger.error({ sessionId: id, err }, "Falha ao iniciar sessão em segundo plano");
     });
@@ -147,12 +136,48 @@ export class SessionManager {
   }
 
   async getQrCode(sessionId: string): Promise<string | null> {
-    this.requireSession(sessionId); // valida existência, lança se não encontrada
+    this.requireSession(sessionId);
     return this.driver.getQrCode(sessionId);
   }
 
   async requestPairingCode(sessionId: string, phoneNumber: string): Promise<string> {
     this.requireSession(sessionId);
     return this.driver.requestPairingCode(sessionId, phoneNumber);
+  }
+
+  /**
+   * Avisa o número admin (ADMIN_NOTIFICATION_PHONE) via WhatsApp quando uma
+   * sessão cai. Usa qualquer OUTRA sessão que ainda esteja conectada pra
+   * enviar o aviso — a própria sessão que caiu obviamente não consegue
+   * enviar nada. Se nenhuma sessão estiver disponível, só loga.
+   */
+  private async notifySessionDown(sessionId: string, sessionName: string, newState: SessionState): Promise<void> {
+    if (!env.ADMIN_NOTIFICATION_PHONE) return;
+
+    const messenger = this.list().find((s) => s.sessionId !== sessionId && s.getState() === SessionState.CONECTADO);
+
+    const timestamp = new Date().toLocaleString("pt-BR", { timeZone: "America/Cuiaba" });
+    const text =
+      `⚠️ Sessão "${sessionName}" (#${sessionId}) mudou para ${newState} às ${timestamp}.\n` +
+      `Verifique o painel da Plataforma.`;
+
+    if (!messenger) {
+      logger.warn(
+        { sessionId },
+        "Sessão caiu, mas nenhuma outra sessão está conectada para enviar o aviso via WhatsApp"
+      );
+      return;
+    }
+
+    try {
+      await this.driver.sendText({
+        sessionId: messenger.sessionId,
+        contact: env.ADMIN_NOTIFICATION_PHONE,
+        text,
+      });
+      logger.info({ sessionId, via: messenger.sessionId }, "Aviso de desconexão enviado via WhatsApp");
+    } catch (error) {
+      logger.error({ sessionId, error }, "Falha ao enviar aviso de desconexão via WhatsApp");
+    }
   }
 }
