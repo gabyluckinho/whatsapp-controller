@@ -27,7 +27,8 @@ export class SessionSupervisor {
     private readonly logRepository: LogRepository,
     private readonly webhookDispatcher: WebhookDispatcher,
     private readonly messageRepository: MessageRepository,
-    private readonly sessionRepository: SessionRepository
+    private readonly sessionRepository: SessionRepository,
+    private readonly onDisconnectNotify?: (sessionId: string, sessionName: string, newState: SessionState) => void
   ) {
     this.log = childLogger(sessionId);
   }
@@ -53,6 +54,12 @@ export class SessionSupervisor {
       sessionId: this.sessionId,
       status: next,
     });
+
+    // Dispara o aviso de notificação (WhatsApp pro admin) sempre que a sessão
+    // cai por qualquer motivo — desconexão real ou falha ao iniciar/reconectar.
+    if (next === SessionState.DESCONECTADO || next === SessionState.ERRO) {
+      this.onDisconnectNotify?.(this.sessionId, this.sessionName, next);
+    }
   }
 
   async start(): Promise<void> {
@@ -117,4 +124,3 @@ export class SessionSupervisor {
     });
   }
 }
-
