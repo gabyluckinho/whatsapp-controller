@@ -15,6 +15,7 @@ interface SessionRuntime {
   connected: boolean;
   incomingHandlers: Array<(msg: IncomingMessage) => void>;
   disconnectHandlers: Array<() => void>;
+  healthCheckTimer: NodeJS.Timeout | null;
 }
 
 /**
@@ -58,6 +59,7 @@ export class PlaywrightDriver implements IBrowserDriver {
       connected: false,
       incomingHandlers: [],
       disconnectHandlers: [],
+      healthCheckTimer: null,
     };
     this.sessions.set(sessionId, runtime);
 
@@ -67,6 +69,7 @@ export class PlaywrightDriver implements IBrowserDriver {
     await this.watchForQrOrLoad(sessionId, runtime);
     await this.attachIncomingMessageListener(sessionId, runtime);
     this.attachDisconnectionWatcher(sessionId, runtime);
+    this.startHealthCheck(sessionId, runtime);
 
     logger.info({ sessionId }, "Sessão iniciada");
   }
@@ -74,6 +77,7 @@ export class PlaywrightDriver implements IBrowserDriver {
   async stopSession(sessionId: string): Promise<void> {
     const runtime = this.sessions.get(sessionId);
     if (!runtime) return;
+    if (runtime.healthCheckTimer) clearInterval(runtime.healthCheckTimer);
     await runtime.context.close();
     this.sessions.delete(sessionId);
     logger.info({ sessionId }, "Sessão finalizada");
@@ -85,6 +89,41 @@ export class PlaywrightDriver implements IBrowserDriver {
 
   async isConnected(sessionId: string): Promise<boolean> {
     return this.sessions.get(sessionId)?.connected ?? false;
+  }
+
+  async requestPairingCode(sessionId: string, phoneNumber: string): Promise<string> {
+    const runtime = this.requireRuntime(sessionId);
+    const { page } = runtime;
+    const digitsOnly = phoneNumber.replace(/\D/g, "");
+
+    if (digitsOnly.length < 10) {
+      throw new Error("Número de telefone inválido — inclua o código do país (ex: 5511999999999)");
+    }
+
+    const trigger = page.getByText(WhatsAppSelectors.linkWithPhoneTrigger).first();
+    await trigger.waitFor({ state: "visible", timeout: 20_000 });
+    await simulatePresence(page);
+    await trigger.click();
+    await microDelay(500, 1000);
+
+    const phoneInput = page.locator(WhatsAppSelectors.phoneNumberInput).first();
+    await phoneInput.waitFor({ state: "visible", timeout: 10_000 });
+    await humanType(page, WhatsAppSelectors.phoneNumberInput, digitsOnly);
+    await microDelay(300, 700);
+
+    const nextBtn = page.getByText(WhatsAppSelectors.nextButton).first();
+    await nextBtn.click();
+
+    const codeEl = page.locator(WhatsAppSelectors.pairingCodeText).first();
+    await codeEl.waitFor({ state: "visible", timeout: 20_000 });
+    const code = (await codeEl.textContent())?.trim() ?? "";
+
+    if (!code) {
+      throw new Error("Não foi possível ler o código de pareamento na tela — o layout do WhatsApp Web pode ter mudado");
+    }
+
+    logger.info({ sessionId }, "Código de pareamento gerado");
+    return code;
   }
 
   onIncomingMessage(sessionId: string, handler: (msg: IncomingMessage) => void): void {
@@ -181,7 +220,7 @@ export class PlaywrightDriver implements IBrowserDriver {
     const deadline = Date.now() + QR_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
-            const loggedIn = await page.locator(WhatsAppSelectors.loggedInIndicator).count();
+      const loggedIn = await page.locator(WhatsAppSelectors.loggedInIndicator).count();
       if (loggedIn > 0) {
         runtime.connected = true;
         runtime.lastQr = null;
@@ -210,19 +249,35 @@ export class PlaywrightDriver implements IBrowserDriver {
         runtime.incomingHandlers.forEach((handler) => handler(msg));
       });
     } catch (error) {
-      // Falha ao anexar o listener não deve derrubar a sessão inteira — o envio
-      // continua funcionando, só o recebimento automático fica indisponível
-      // até o próximo restart. Loga como erro para investigação.
       logger.error({ sessionId, error }, "Falha ao anexar listener de mensagens recebidas");
     }
   }
 
   private attachDisconnectionWatcher(sessionId: string, runtime: SessionRuntime): void {
-    runtime.page.on("close", () => {
+    const handleDisconnect = (reason: string) => {
+      if (!runtime.connected) return;
       runtime.connected = false;
       runtime.disconnectHandlers.forEach((h) => h());
-      logger.warn({ sessionId }, "Página da sessão fechou inesperadamente");
-    });
+      logger.warn({ sessionId, reason }, "Sessão desconectada");
+    };
+
+    runtime.page.on("close", () => handleDisconnect("página fechou"));
+    runtime.context.on("close", () => handleDisconnect("navegador encerrou"));
+  }
+
+  private startHealthCheck(sessionId: string, runtime: SessionRuntime): void {
+    runtime.healthCheckTimer = setInterval(async () => {
+      if (!runtime.connected) return;
+      try {
+        const stillLoggedIn = await runtime.page.locator(WhatsAppSelectors.loggedInIndicator).count();
+        if (stillLoggedIn === 0) {
+          runtime.connected = false;
+          runtime.disconnectHandlers.forEach((h) => h());
+          logger.warn({ sessionId }, "Sessão perdeu login (detectado via checagem ativa)");
+        }
+      } catch (error) {
+        logger.warn({ sessionId, error }, "Falha ao checar saúde da sessão (tentativa isolada)");
+      }
+    }, 20_000);
   }
 }
-
