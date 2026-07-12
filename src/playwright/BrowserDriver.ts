@@ -29,8 +29,11 @@ export interface IBrowserDriver {
 
   requestPairingCode(sessionId: string, phoneNumber: string): Promise<string>;
 
-  /** Caminho do último screenshot de erro capturado (pode não existir ainda). */
+   /** Caminho do último screenshot de erro capturado (pode não existir ainda). */
   getDebugScreenshotPath(sessionId: string): string;
+
+  /** Caminho do HTML real da área de composição de mensagem no momento do erro. */
+  getDebugHtmlPath(sessionId: string): string;
 
   sendText(params: SendTextParams): Promise<void>;
   sendImage(params: SendMediaParams): Promise<void>;
