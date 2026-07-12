@@ -16,7 +16,7 @@ const loginSchema = z.object({ password: z.string().min(1) });
 export function platformAuthRouter(): Router {
   const router = Router();
 
-  router.post("/login", (req, res) => {
+    router.post("/", (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Senha ausente" });
