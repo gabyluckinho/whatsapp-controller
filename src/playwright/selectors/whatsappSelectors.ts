@@ -18,7 +18,8 @@ export const WhatsAppSelectors = {
 chatSearchInput:
     '#side div[contenteditable="true"][data-lexical-editor="true"], #side input[type="text"], #side div[contenteditable="true"], #pane-side div[contenteditable="true"], div[contenteditable="true"][data-tab="3"]',
   messageInput: 'div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"]',
-  sendButton: 'button[aria-label="Send"], button[aria-label="Enviar"], [data-icon="send"]',
+    sendButton:
+    'button[aria-label="Send"], button[aria-label="Enviar"], [aria-label*="Enviar" i], [aria-label*="Send" i], [data-icon="send"], [data-icon*="send" i], div[role="button"][data-icon], span[data-icon][role="button"]',
   attachButton: 'div[title="Attach"], div[title="Anexar"], button[aria-label="Attach"], button[aria-label="Anexar"], [data-icon="attach"], [data-icon="plus"]',
   attachImageInput: 'input[accept*="image"]',
   attachDocumentInput: 'input[accept*="*"]',
