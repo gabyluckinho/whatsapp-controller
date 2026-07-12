@@ -1,22 +1,8 @@
-# ---------------------------------------------------------------------------
-# VERSÃO SIMPLIFICADA PARA O PRIMEIRO DEPLOY
-# ---------------------------------------------------------------------------
-# Sem Traefik/domínio — publica a porta 3000 direto na VPS. Acesse depois por:
-#   Plataforma (painel): http://SEU_IP:3000/platform
-#   API interna (n8n):   http://SEU_IP:3000
-#
-# Quando quiser HTTPS + domínio bonito, use o docker-compose.yml normal
-# (com labels do Traefik) no lugar deste.
-# ---------------------------------------------------------------------------
 version: "3.9"
 
 services:
   controller:
-    build:
-      context: .
-      dockerfile: docker/controller/Dockerfile
-    container_name: wa-controller
-    restart: unless-stopped
+    image: ghcr.io/gabyluckinho/whatsapp-controller:latest
     environment:
       - PORT=${PORT}
       - API_KEY=${API_KEY}
@@ -38,11 +24,11 @@ services:
       - "3000:3000"
     volumes:
       - sessions_data:/data/sessions
-    depends_on:
-      - redis
     networks:
       - wa-net
     deploy:
+      restart_policy:
+        condition: on-failure
       resources:
         limits:
           memory: 3g
@@ -51,13 +37,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: wa-redis
-    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     networks:
       - wa-net
+    deploy:
+      restart_policy:
+        condition: on-failure
 
 networks:
   wa-net:
