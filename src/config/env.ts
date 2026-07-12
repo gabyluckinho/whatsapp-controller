@@ -20,7 +20,11 @@ const envSchema = z.object({
 
   SESSIONS: z.string().optional().default(""),
 
-  PLATFORM_ADMIN_PASSWORD: z.string().min(8, "PLATFORM_ADMIN_PASSWORD deve ter pelo menos 8 caracteres"),
+    PLATFORM_ADMIN_PASSWORD: z.string().min(8, "PLATFORM_ADMIN_PASSWORD deve ter pelo menos 8 caracteres"),
+
+  // Número (com código do país, só dígitos) que recebe aviso via WhatsApp
+  // quando qualquer sessão desconecta. Deixe em branco para desativar.
+  ADMIN_NOTIFICATION_PHONE: z.string().optional().default(""),
 
   HUMAN_DELAY_MIN_MS: z.coerce.number().default(1800),
   HUMAN_DELAY_MAX_MS: z.coerce.number().default(6500),
