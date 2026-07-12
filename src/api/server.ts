@@ -22,15 +22,9 @@ export function createServer(sessionManager: SessionManager) {
 
   // Sem auth por API key: healthcheck do Docker e login da Plataforma
   // (a Plataforma se autentica com sua própria senha, ver platform.routes.ts).
-    app.use("/health", healthRouter(sessionManager));
+  app.use("/health", healthRouter(sessionManager));
   app.use("/platform/login", platformLoginRateLimiter, platformAuthRouter());
 
-  // TEMPORÁRIO — remover depois de diagnosticar o problema de auth via query.
-  // Sem autenticação nenhuma, só mostra exatamente o que o servidor recebeu.
-   app.use("/health", healthRouter(sessionManager));
-  app.use("/platform/login", platformLoginRateLimiter, platformAuthRouter());
-    });
-  });
   // Dashboard estático (HTML/JS puro) — servido pelo próprio Controller,
   // sem container/build separado. A autenticação acontece no próprio painel
   // (tela de login chama /platform/login e guarda a API key no navegador).
@@ -61,4 +55,3 @@ export function startServer(): void {
     logger.info({ url: `http://localhost:${env.PORT}/platform` }, "Plataforma (dashboard) disponível");
   });
 }
-
