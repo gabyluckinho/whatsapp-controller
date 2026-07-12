@@ -154,5 +154,24 @@ export function sessionsRouter(sessionManager: SessionManager, logRepository: Lo
     })
   );
 
+  // Mostra o print da tela exata do momento da última falha de envio —
+  // útil pra depurar seletores do WhatsApp Web sem acesso visual direto
+  // ao navegador headless. Abre direto no navegador como imagem.
+  router.get(
+    "/:id/debug-screenshot",
+    asyncHandler(async (req, res) => {
+      try {
+        const screenshotPath = sessionManager.getDebugScreenshotPath(req.params.id);
+        res.sendFile(screenshotPath, (err) => {
+          if (err) {
+            res.status(404).json({ error: "Nenhum screenshot de erro disponível ainda para essa sessão" });
+          }
+        });
+      } catch (error) {
+        res.status(404).json({ error: error instanceof Error ? error.message : `Sessão "${req.params.id}" não encontrada` });
+      }
+    })
+  );
+
   return router;
 }
