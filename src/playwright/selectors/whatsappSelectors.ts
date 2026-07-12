@@ -21,4 +21,13 @@ export const WhatsAppSelectors = {
   attachDocumentInput: 'input[accept*="*"]',
   incomingMessageBubble: 'div[data-testid="msg-container"], div.message-in',
   disconnectedBanner: 'div[data-testid="alert-phone"], div[data-ref]',
+
+  // Fluxo de "conectar com número de telefone" — usa texto em vez de classe
+  // CSS porque essa tela muda de layout com mais frequência que a do QR.
+  // Os regex cobrem português e inglês (a sessão roda em pt-BR, mas o
+  // WhatsApp às vezes demora a aplicar o locale no primeiro load).
+  linkWithPhoneTrigger: /n[uú]mero de telefone|phone number/i,
+  phoneNumberInput: 'input[type="text"], input[aria-label*="phone" i], input[aria-label*="telefone" i]',
+  nextButton: /avan[cç]ar|next|pr[oó]ximo/i,
+  pairingCodeText: '[data-testid="pairing-code"], div.pairing-code, div._pairing-code',
 } as const;
