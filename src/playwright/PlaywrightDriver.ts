@@ -227,7 +227,11 @@ export class PlaywrightDriver implements IBrowserDriver {
       await simulatePresence(page);
       await humanDelay();
 
-      await page.locator(WhatsAppSelectors.attachButton).first().click();
+      // force: true — o elemento já foi confirmado (locator resolveu certo),
+      // mas o clique "educado" do Playwright estava sendo bloqueado por algo
+      // sobrepondo visualmente o botão (comum durante animações da UI do
+      // WhatsApp). force ignora essa checagem e clica direto nas coordenadas.
+      await page.locator(WhatsAppSelectors.attachButton).first().click({ force: true });
       await microDelay(200, 500);
 
       const fileInput = page.locator(WhatsAppSelectors.attachDocumentInput).first();
@@ -319,6 +323,11 @@ export class PlaywrightDriver implements IBrowserDriver {
           // canvas pode estar re-renderizando; tenta de novo no próximo loop
         }
       } else if (qrWasShown) {
+        // O QR estava visível e sumiu — é a prova de que o celular escaneou
+        // com sucesso. NÃO esperamos a lista de conversas terminar de
+        // sincronizar pra considerar "conectado": a sincronização pode levar
+        // bem mais tempo (depende do volume de mensagens) e não é necessária
+        // pra já começar a enviar/receber mensagens pela automação.
         runtime.connected = true;
         runtime.connectedAt = Date.now();
         runtime.lastQr = null;
