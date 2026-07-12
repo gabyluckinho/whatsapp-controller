@@ -22,6 +22,12 @@ interface SessionRuntime {
   healthCheckTimer: NodeJS.Timeout | null;
 }
 
+/**
+ * Implementação real do IBrowserDriver usando Playwright + Chromium.
+ * Cada sessão = 1 BrowserContext PERSISTENTE (perfil próprio em disco),
+ * garantindo que reiniciar o container não derrube o login (requisito
+ * de persistência) e que cada sessão tenha fingerprint estável (antiDetection).
+ */
 export class PlaywrightDriver implements IBrowserDriver {
   private sessions = new Map<string, SessionRuntime>();
 
@@ -184,6 +190,9 @@ export class PlaywrightDriver implements IBrowserDriver {
   }
 
   private async openChat(page: Page, contact: string): Promise<void> {
+    // Em versões mais novas do WhatsApp Web, a caixa de busca só aparece
+    // depois de clicar num ícone de lupa — tenta isso primeiro, sem falhar
+    // se o ícone não existir (versões antigas já mostram a caixa direto).
     try {
       const searchIcon = page
         .locator(
@@ -196,7 +205,16 @@ export class PlaywrightDriver implements IBrowserDriver {
       // ícone não existe ou a caixa já está visível — segue normalmente
     }
 
-    await page.locator(WhatsAppSelectors.chatSearchInput).click({ timeout: 15000 });
+    const searchBox = page.locator(WhatsAppSelectors.chatSearchInput).first();
+    await searchBox.click({ timeout: 15000 });
+
+    // IMPORTANTE: limpa o campo antes de digitar — sem isso, o texto de uma
+    // busca anterior fica acumulado (ex: "551199999999" vira
+    // "551199999999552188888888"), fazendo o WhatsApp não achar ninguém.
+    await page.keyboard.press("Control+A");
+    await page.keyboard.press("Backspace");
+    await microDelay(100, 250);
+
     await humanType(page, WhatsAppSelectors.chatSearchInput, contact);
     await microDelay(400, 900);
     await page.keyboard.press("Enter");
@@ -313,6 +331,11 @@ export class PlaywrightDriver implements IBrowserDriver {
           // canvas pode estar re-renderizando; tenta de novo no próximo loop
         }
       } else if (qrWasShown) {
+        // O QR estava visível e sumiu — é a prova de que o celular escaneou
+        // com sucesso. NÃO esperamos a lista de conversas terminar de
+        // sincronizar pra considerar "conectado": a sincronização pode levar
+        // bem mais tempo (depende do volume de mensagens) e não é necessária
+        // pra já começar a enviar/receber mensagens pela automação.
         runtime.connected = true;
         runtime.connectedAt = Date.now();
         runtime.lastQr = null;
@@ -348,6 +371,19 @@ export class PlaywrightDriver implements IBrowserDriver {
     runtime.context.on("close", () => handleDisconnect("navegador encerrou"));
   }
 
+  /**
+   * O WhatsApp Web pode "deslogar" a sessão (ex: usuário removeu o aparelho
+   * pelo celular) sem fechar a aba nem o navegador — nesse caso, nem
+   * page.on('close') nem context.on('close') disparam. Por isso, checamos
+   * ativamente a cada 20s se o indicador de login ainda está presente.
+   *
+   * Damos uma tolerância de 90s após conectar antes de começar a exigir esse
+   * indicador: como agora consideramos "conectado" assim que o QR some (sem
+   * esperar a sincronização de conversas terminar — ver watchForQrOrLoad), a
+   * barra lateral de conversas (loggedInIndicator) pode ainda não ter
+   * renderizado completamente nos primeiros segundos, o que geraria um falso
+   * positivo de desconexão logo após conectar.
+   */
   private startHealthCheck(sessionId: string, runtime: SessionRuntime): void {
     const GRACE_PERIOD_MS = 90_000;
 
