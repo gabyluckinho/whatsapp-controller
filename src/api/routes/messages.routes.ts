@@ -3,10 +3,13 @@ import { z } from "zod";
 import { SessionManager } from "../../sessions/SessionManager";
 import { asyncHandler } from "../middlewares/asyncHandler";
 
-const textSchema = z.object({ contact: z.string().min(3), text: z.string().min(1) });
+// z.coerce.string() aceita o contato vindo como número (comum quando a
+// origem é planilha/Sheets, que guarda telefone sem aspas) ou como texto,
+// convertendo pra string automaticamente nos dois casos.
+const textSchema = z.object({ contact: z.coerce.string().min(3), text: z.string().min(1) });
 const mediaSchema = z
   .object({
-    contact: z.string().min(3),
+    contact: z.coerce.string().min(3),
     filePath: z.string().min(1).optional(),
     mediaUrl: z.string().url().optional(),
     caption: z.string().optional(),
@@ -25,6 +28,9 @@ export function messagesRouter(sessionManager: SessionManager): Router {
       try {
         supervisor = sessionManager.requireSession(req.params.id);
       } catch (error) {
+        // ESSENCIAL: antes, um erro aqui (sessão não encontrada) travava a
+        // requisição pra sempre, sem nunca responder — o cliente (ex: n8n)
+        // ficava esperando indefinidamente. Agora responde 404 na hora.
         res.status(404).json({ error: error instanceof Error ? error.message : `Sessão "${req.params.id}" não encontrada` });
         return;
       }
