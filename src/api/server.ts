@@ -27,14 +27,8 @@ export function createServer(sessionManager: SessionManager) {
 
   // TEMPORÁRIO — remover depois de diagnosticar o problema de auth via query.
   // Sem autenticação nenhuma, só mostra exatamente o que o servidor recebeu.
-  app.get("/debug-echo", (req, res) => {
-    res.json({
-      queryApiKey: req.query.apiKey ?? null,
-      headerApiKey: req.header("x-api-key") ?? null,
-      envApiKeyLength: env.API_KEY.length,
-      queryApiKeyLength: typeof req.query.apiKey === "string" ? req.query.apiKey.length : null,
-      matchesEnv: req.query.apiKey === env.API_KEY,
-      fullUrl: req.originalUrl,
+   app.use("/health", healthRouter(sessionManager));
+  app.use("/platform/login", platformLoginRateLimiter, platformAuthRouter());
     });
   });
   // Dashboard estático (HTML/JS puro) — servido pelo próprio Controller,
